@@ -15,7 +15,7 @@ class ChromaProcessor:
         return cls._instance
 
     def initialize(self, model_name):
-        model_kwargs = {'device': 'cuda:0'}
+        model_kwargs = {'device': 'cpu'}
         encode_kwargs = {'normalize_embeddings': False}
         self.embeddings = HuggingFaceEmbeddings(
             model_name=model_name,
@@ -25,6 +25,7 @@ class ChromaProcessor:
         self.db = None
 
     def process_and_persist(self, text_file_path):
+        print(text_file_path)
         loader = TextLoader(text_file_path)
         documents = loader.load()
 
@@ -35,11 +36,8 @@ class ChromaProcessor:
         try:
             db = Chroma.from_documents(texts, self.embeddings)
             self.db = db
-        except InvalidDimensionException:
+        except:
             Chroma().delete_collection()
             db = Chroma.from_documents(texts, self.embeddings)
             self.db = db
         print("Finish processing documents")
-
-    def search(self, query):
-        return self.db.similarity_search(query)[0].page_content

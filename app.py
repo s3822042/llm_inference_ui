@@ -1,4 +1,5 @@
 import os
+import glob
 import streamlit as st
 import whisper
 from chroma_init import ChromaProcessor
@@ -27,19 +28,22 @@ def main():
             )
         submitted = st.form_submit_button("submit")
 
-    if isUploading == False:
+    if submitted and uploaded_files is not None and not isUploading:
         on_upload(uploaded_files)
         isUploading = True
 
     query = st.text_input("Enter your query")
 
+    submit_button_key = ""
+
     if st.button("Submit"):
         if uploaded_files is not None and query:
+            st.button("Submit", key=submit_button_key, disabled=True)
             results = process_query(query)
             st.write(results)
             # display_results(results, results_placeholder)
         else:
-            st.warning("Please upload an audio file and enter a query.")
+            st.warning("Please upload audio file(s) and enter a query.")
 
     if uploaded_files:
         display_uploaded_files(uploaded_files)
@@ -86,12 +90,24 @@ def transcript_files(file_paths):
     return results
 
 def ingest_into_db(transcriptions, file_names):
+    concatenated_transcription = ""
+
     for transcription, file_name in zip(transcriptions, file_names):
-        output_file_path = f'{FILE_STORAGE_PATH}/{file_name.replace(".", "_")}_transcript.txt'
-        with open(output_file_path, "w") as output_file:
+        concatenated_transcription += transcription['text'] + "\n"
+
+        individual_file_path = f'{FILE_STORAGE_PATH}/{file_name.replace(".", "_")}_transcript.txt'
+        with open(individual_file_path, "w") as output_file:
             output_file.write(transcription['text'])
-        print(f"Transcript for {file_name} has been written to {output_file_path}")
-        chroma.process_and_persist(output_file_path)
+
+        print(f"Transcript for {file_name} has been written to {individual_file_path}")
+
+    concatenated_file_path = f'{FILE_STORAGE_PATH}/all_transcriptions.txt'
+    with open(concatenated_file_path, "w") as output_file:
+        output_file.write(concatenated_transcription)
+
+    print("Concatenated transcription has been written to", concatenated_file_path)
+
+    chroma.process_and_persist(concatenated_file_path)
 
 
 def process_query(query):
@@ -137,5 +153,11 @@ def apply_styles():
         unsafe_allow_html=True,
     )
 
+def cleanUpFiles():
+    files = glob.glob('files/*')
+    for f in files:
+        os.remove(f)
+
 if __name__ == "__main__":
+    cleanUpFiles()
     main()
