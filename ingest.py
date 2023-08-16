@@ -13,74 +13,72 @@ from langchain.document_loaders import JSONLoader
 from chromadb.errors import InvalidDimensionException
 import json
 
-ALLOWED_AUDIO_EXTENIONS = None # ["mp3", "wav"]
-ALLOW_MULTIPLE_FILES = True
-FILE_STORAGE_PATH = "./files"
+class IngestionTranscription:
+    def __init__(self):
+        self.ALLOWED_AUDIO_EXTENSIONS = None  # ["mp3", "wav"]
+        self.ALLOW_MULTIPLE_FILES = True
+        self.FILE_STORAGE_PATH = "./files"
+        self.model = None
 
-model = None
+    def run(self):
+        with st.form("my-form", clear_on_submit=True):
+            uploaded_files = st.file_uploader(
+                "Choose a file",
+                type=self.ALLOWED_AUDIO_EXTENSIONS,
+                accept_multiple_files=self.ALLOW_MULTIPLE_FILES,
+            )
 
-with st.form("my-form", clear_on_submit=True):
-    uploaded_files = st.file_uploader(
-        "Choose a file", 
-        type=ALLOWED_AUDIO_EXTENIONS,
-        accept_multiple_files=ALLOW_MULTIPLE_FILES
-        )
-    
-    submitted = st.form_submit_button("submit")
-    
-def upload_file(name, bytes):
-    file_path = f'{FILE_STORAGE_PATH}/{name}'
-    
-    # convert file path to file object
+            submitted = st.form_submit_button("submit")
 
-    if (os.path.exists(file_path)):
-        st.warning(f'File {name} already exists.')
-        return
-    
-    with open(file_path, 'wb') as f:
-        f.write(bytes)
-        st.success(f'File {name} successfully uploaded.')
+        if uploaded_files:
+            for uploaded_file in uploaded_files:
+                self.upload_file(uploaded_file.name, uploaded_file.read())
+                transcription = self.transcript_file(uploaded_file.name)
+                # self.ingest_into_db(transcription)
 
-def get_model(version="base"):
-    global model
-    if (model == None):
-        model = whisper.load_model(version)
-    
-    return model
+    def upload_file(self, name, bytes):
+        file_path = os.path.join(self.FILE_STORAGE_PATH, name)
 
-def transcript_file(name):
-    file_path = f'{FILE_STORAGE_PATH}/{name}'
-    data_load_state = st.text('transcribing data...')
-    options = {
-        "language": "English"
-    }
-    result = get_model().transcribe(
-        file_path,
-        **options
-    )
-    data_load_state.text('transcribing data...done!')
-    return result
+        if os.path.exists(file_path):
+            st.warning(f"File {name} already exists.")
+            return
 
-def ingest_into_db(transcription):
-    # Load and process the text
-    loader = JSONLoader(transcription['segments'])
-    documents = loader.load()
+        with open(file_path, "wb") as f:
+            f.write(bytes)
+            st.success(f"File {name} successfully uploaded.")
 
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=0)
-    texts = text_splitter.split_documents(documents)
-    embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
-    try:
-        db = Chroma.from_documents(texts, embedding_function)
-    except InvalidDimensionException:
-        Chroma().delete_collection()
-        db = Chroma.from_documents(texts, embedding_function)
+    def get_model(self, version="base"):
+        if self.model is None:
+            self.model = whisper.load_model(version)
+        return self.model
 
-    docs = db.similarity_search("Summarize the conversation!", k=5)
+    def transcript_file(self, name):
+        file_path = os.path.join(self.FILE_STORAGE_PATH, name)
+        data_load_state = st.text("transcribing data...")
+        options = {"language": "English"}
+        result = self.get_model().transcribe(file_path, **options)
+        data_load_state.text("transcribing data...done!")
+        return result
 
-    st.divider()
-    st.write(docs)
+    # def ingest_into_db(self, transcription):
+    # # Load and process the text
+    # loader = JSONLoader(transcription['segments'])
+    # documents = loader.load()
 
-for uploaded_file in uploaded_files:
-    upload_file(uploaded_file.name, uploaded_file.read())
-    transcription = transcript_file(uploaded_file.name)
-    ingest_into_db(transcription)
+    # text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=0)
+    # texts = text_splitter.split_documents(documents)
+    # embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+    # try:
+    #     db = Chroma.from_documents(texts, embedding_function)
+    # except InvalidDimensionException:
+    #     Chroma().delete_collection()
+    #     db = Chroma.from_documents(texts, embedding_function)
+
+    # docs = db.similarity_search("Summarize the conversation!", k=5)
+
+    # st.divider()
+    # st.write(docs)
+
+if __name__ == "__main__":
+    app = IngestionTranscription()
+    app.run()
