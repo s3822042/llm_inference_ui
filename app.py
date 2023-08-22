@@ -14,6 +14,7 @@ FILE_STORAGE_PATH = "./files"
 model = None
 chroma = ChromaProcessor()
 at = AudioTextTranscriptionAnalysis()
+
 def main():
     st.title("Audio File Upload and Query App")
     st.write("Upload an audio file (e.g., MP3, WAV) and enter a query to see the results.")
@@ -28,25 +29,24 @@ def main():
             )
         submitted = st.form_submit_button("submit")
 
-    if submitted and uploaded_files is not None and not isUploading:
-        on_upload(uploaded_files)
-        isUploading = True
+        if submitted and uploaded_files is not None and not isUploading:
+            on_upload(uploaded_files)
+            isUploading = True
+        
+        if uploaded_files:
+            display_uploaded_files(uploaded_files)
 
-    query = st.text_input("Enter your query")
+    with st.form('query-form', clear_on_submit=True):
+        query = st.text_input("Enter your query")
 
-    submit_button_key = ""
+        submitted = st.form_submit_button("submit")
 
-    if st.button("Submit"):
-        if uploaded_files is not None and query:
-            st.button("Submit", key=submit_button_key, disabled=True)
+        if submitted and query:
+            # st.button("Submit", key=submit_button_key, disabled=True)
             results = process_query(query)
-            st.write(results)
+            st.code(query)
+            st.markdown(results)
             # display_results(results, results_placeholder)
-        else:
-            st.warning("Please upload audio file(s) and enter a query.")
-
-    if uploaded_files:
-        display_uploaded_files(uploaded_files)
 
     apply_styles()
 
@@ -107,7 +107,8 @@ def ingest_into_db(transcriptions, file_names):
 
     print("Concatenated transcription has been written to", concatenated_file_path)
 
-    chroma.process_and_persist(concatenated_file_path)
+    # chroma.process_and_persist(concatenated_file_path)
+    chroma.load_document(concatenated_file_path)
 
 
 def process_query(query):
@@ -154,7 +155,7 @@ def apply_styles():
     )
 
 def cleanUpFiles():
-    files = glob.glob('files/*')
+    files = glob.glob('{FILE_STORAGE_PATH}/*')
     for f in files:
         os.remove(f)
 
