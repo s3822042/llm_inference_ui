@@ -1,6 +1,7 @@
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from langchain.embeddings.sentence_transformer import SentenceTransformerEmbeddings
+from prompter import llama_v2_prompt, extract_text_llama2
 
 
 class AudioTextTranscriptionAnalysis:
@@ -32,25 +33,36 @@ class AudioTextTranscriptionAnalysis:
             quantization_config=quantization_config,
             device_map=self.selected_gpu
         )
+        self.tokenizer.add_special_tokens({
+            "eos_token": self.tokenizer.convert_ids_to_tokens(self.model.config.eos_token_id),
+            "bos_token": self.tokenizer.convert_ids_to_tokens(self.model.config.bos_token_id),
+        })
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+    
 
     def generate_text(self, prompt):
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(
-            f"cuda:{self.selected_gpu}")
-        with torch.inference_mode():
-            tokens = self.model.generate(
-                **inputs,
-                do_sample=True,
-                top_k=10,  # (int, optional, defaults to 50)
-                top_p=0.95,  # (float, optional, defaults to 1.0)
-                num_return_sequences=1,
-                eos_token_id=self.tokenizer.eos_token_id,
-                max_length=1000,
-            )
-            completion_tokens = tokens[0][inputs['input_ids'].size(1):]
-            completion = self.tokenizer.decode(
-                completion_tokens, skip_special_tokens=True
-            )
-            return completion
+        try:
+            with torch.inference_mode():
+                encoding = self.tokenizer(prompt,
+                                          truncation=True,
+                                          padding=True,
+                                          return_tensors="pt").to(f"cuda:{self.selected_gpu}")
+                output = self.model.generate(
+                    input_ids=encoding.input_ids,
+                    attention_mask=encoding.attention_mask,
+                    max_new_tokens=700,
+                    do_sample=True,
+                    temperature=0.2,
+                    top_k=20,
+                    top_p=0.96,
+                )
+                res = self.tokenizer.decode(
+                    output[0], skip_special_tokens=False)
+                extracted_text = extract_text_llama2(res)
+                return extracted_text
+        except Exception as e:
+            print(e)
+            return f"Error {e}"
 
     def transcript_qa(self, chroma_processor, prompt):
         # Assuming you have a proper instance of ChromaProcessor
@@ -58,24 +70,9 @@ class AudioTextTranscriptionAnalysis:
         print("Prompt: " + prompt)
         docs = chroma_processor.search(prompt, k=5)
         res = ' '.join([str(elem.page_content) for elem in docs])
-        # completion = self.generate_text(f"""
-        # You are a safe and helpful assistant. Now act as an audio-text transcription analyst.
-        # Generate the output that an audio-text transcription analyst may give.
-        # You are given the following audio transcription. Only answer the question that could only be found within the audio transcription
-        # {res}
-        # {prompt}
-        # """)
-        full_prompt = f"""
-        You are a helpful assistant in the medical field who gives briefing about conversational recordings. 
-        You will be given a recording for context and a question. 
-        You answer the question solely based on the recordings and avoid disclaimers.
-        The question: "{prompt}"
-        Conversation recording: "{res}"
-        Your answer: 
-        """
-        completion = self.generate_text(full_prompt)
-        print("Full prompt: " + full_prompt + "\n")
+        completion = llama_v2_prompt(
+            [{"role": "user", "content": prompt, "context": res}])
+        print("Full prompt: " + prompt + "\n")
         print("Completion: " + completion + "\n")
-
         # Extracting text after "Completion:"
-        return completion
+        return self.generate_text(completion)

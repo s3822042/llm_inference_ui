@@ -17,7 +17,7 @@ at = AudioTextTranscriptionAnalysis()
 
 def main():
     st.title("Audio File Upload and Query App")
-    st.write("Upload an audio file (e.g., MP3, WAV) and enter a query to see the results.")
+    st.write("Upload an audio file (e.g., MP3, WAV, M4A) and enter a query to see the results.")
 
     isUploading = False
 
@@ -32,7 +32,7 @@ def main():
         if submitted and uploaded_files is not None and not isUploading:
             on_upload(uploaded_files)
             isUploading = True
-        
+
         if uploaded_files:
             display_uploaded_files(uploaded_files)
 
